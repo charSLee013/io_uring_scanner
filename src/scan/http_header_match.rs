@@ -117,12 +117,12 @@ impl ScanHttpHeaderMatch {
 }
 
 impl Scan for ScanHttpHeaderMatch {
-    fn check_supported(&self, probe: &Probe) {
-        check_op_supported(probe, opcode::Connect::CODE, "connect");
-        check_op_supported(probe, opcode::LinkTimeout::CODE, "link timeout");
-        check_op_supported(probe, opcode::WriteFixed::CODE, "write fixed");
-        check_op_supported(probe, opcode::ReadFixed::CODE, "read fixed");
-        check_op_supported(probe, opcode::Close::CODE, "close");
+    fn check_supported(&self, probe: &Probe) -> bool {
+        check_op_supported(probe, opcode::Connect::CODE, "connect") &&
+        check_op_supported(probe, opcode::LinkTimeout::CODE, "link timeout") &&
+        check_op_supported(probe, opcode::WriteFixed::CODE, "write fixed") &&
+        check_op_supported(probe, opcode::ReadFixed::CODE, "read fixed") &&
+        check_op_supported(probe, opcode::Close::CODE, "close")
     }
 
     fn max_tx_size(&mut self) -> Option<usize> {
@@ -138,7 +138,7 @@ impl Scan for ScanHttpHeaderMatch {
     }
 
     fn process_completed_entry(
-        &self,
+        &mut self,
         cq_entry: &cqueue::Entry,
         entry_info: &EntryInfo,
         ring_allocator: &RingAllocator,
@@ -252,7 +252,7 @@ impl Scan for ScanHttpHeaderMatch {
             .flags(squeue::Flags::IO_LINK)
             .user_data(entry_send_timeout_idx);
 
-        let rx_buffer = allocator.alloc_buf(BufferDirection::RX, None);
+        let rx_buffer: crate::ring::Buffer = allocator.alloc_buf(BufferDirection::RX, None);
         let op_recv_idx = allocator
             .alloc_entry(EntryInfo {
                 ip: Rc::clone(&addr),

@@ -59,11 +59,11 @@ impl ScanSshVersion {
 }
 
 impl Scan for ScanSshVersion {
-    fn check_supported(&self, probe: &Probe) {
-        check_op_supported(probe, opcode::Connect::CODE, "connect");
-        check_op_supported(probe, opcode::LinkTimeout::CODE, "link timeout");
-        check_op_supported(probe, opcode::ReadFixed::CODE, "read fixed");
-        check_op_supported(probe, opcode::Close::CODE, "close");
+    fn check_supported(&self, probe: &Probe) -> bool {
+        check_op_supported(probe, opcode::Connect::CODE, "connect") &&
+        check_op_supported(probe, opcode::LinkTimeout::CODE, "link timeout") &&
+        check_op_supported(probe, opcode::ReadFixed::CODE, "read fixed") &&
+        check_op_supported(probe, opcode::Close::CODE, "close")
     }
 
     fn max_tx_size(&mut self) -> Option<usize> {
@@ -75,7 +75,7 @@ impl Scan for ScanSshVersion {
     }
 
     fn process_completed_entry(
-        &self,
+        &mut self,
         cq_entry: &cqueue::Entry,
         entry_info: &EntryInfo,
         ring_allocator: &RingAllocator,
