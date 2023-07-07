@@ -132,6 +132,7 @@ impl Scan for ScanSshVersion {
                 step: EntryStep::Connect as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_connect = opcode::Connect::new(Fd(sckt), addr.as_ptr(), addr.len())
@@ -145,6 +146,7 @@ impl Scan for ScanSshVersion {
                 step: EntryStep::ConnectTimeout as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_connect_timeout = opcode::LinkTimeout::new(&timeouts.connect)
@@ -162,6 +164,7 @@ impl Scan for ScanSshVersion {
                     direction: BufferDirection::RX,
                 }),
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_recv = opcode::ReadFixed::new(
@@ -180,6 +183,7 @@ impl Scan for ScanSshVersion {
                 step: EntryStep::RecvTimeout as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_recv_timeout = opcode::LinkTimeout::new(&timeouts.read)
@@ -193,6 +197,7 @@ impl Scan for ScanSshVersion {
                 step: EntryStep::Close as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_close = opcode::Close::new(Fd(sckt))

@@ -15,9 +15,15 @@ Examples:
 "#)]
 pub struct CommandLineOptions {
     /// TCP port to scan
+    #[structopt(short,long,default_value = "443")]
     pub port: u16,
 
+    /// The number of delay times for speedtest. The number of times to delay test a single IP.
+    #[structopt(long, default_value = "4")]
+    pub time: u8,
+
     /// IPv4 subnets to scan
+    #[structopt(short,long)]
     pub ip_subnets: Vec<Ipv4Net>,
 
     /// Maximum count of preallocated sockets
@@ -34,7 +40,7 @@ pub struct CommandLineOptions {
     pub ring_batch_size: usize,
 
     /// Socket connect timeout
-    #[structopt(long = "connect-timeout-sec", default_value = "5")]
+    #[structopt(long = "connect-timeout-sec", default_value = "1")]
     pub timeout_connect_secs: u64,
 
     /// Socket read/recv timeout

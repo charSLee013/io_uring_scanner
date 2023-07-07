@@ -196,6 +196,7 @@ impl Scan for ScanHttpHeaderMatch {
                 step: EntryStep::Connect as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_connect = opcode::Connect::new(Fd(sckt), addr.as_ptr(), addr.len())
@@ -209,6 +210,7 @@ impl Scan for ScanHttpHeaderMatch {
                 step: EntryStep::ConnectTimeout as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_connect_timeout = opcode::LinkTimeout::new(&timeouts.connect)
@@ -227,6 +229,7 @@ impl Scan for ScanHttpHeaderMatch {
                     direction: BufferDirection::TX,
                 }),
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_send = opcode::WriteFixed::new(
@@ -245,6 +248,7 @@ impl Scan for ScanHttpHeaderMatch {
                 step: EntryStep::SendTimeout as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_send_timeout = opcode::LinkTimeout::new(&timeouts.write)
@@ -262,6 +266,7 @@ impl Scan for ScanHttpHeaderMatch {
                     direction: BufferDirection::RX,
                 }),
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_recv = opcode::ReadFixed::new(
@@ -280,6 +285,7 @@ impl Scan for ScanHttpHeaderMatch {
                 step: EntryStep::RecvTimeout as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_recv_timeout = opcode::LinkTimeout::new(&timeouts.read)
@@ -293,6 +299,7 @@ impl Scan for ScanHttpHeaderMatch {
                 step: EntryStep::Close as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
         let op_close = opcode::Close::new(Fd(sckt))

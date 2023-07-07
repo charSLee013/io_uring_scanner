@@ -1,0 +1,30 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug with CodeLLDB",
+            "type": "lldb",
+            "request": "launch",
+            "cargo":{
+                "args": [
+                    "build",
+                    "--bin=io_uring_scanner"
+                ],
+                "filter": {
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--port",
+                "80",
+                "-i",
+                "173.245.48.1/32",
+                "--ring-size",
+                "16385",
+                "tcp-connect"
+            ],
+            "program": "${workspaceFolder}/target/debug/io_uring_scanner",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

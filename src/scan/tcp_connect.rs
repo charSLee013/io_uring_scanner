@@ -97,7 +97,7 @@ impl Scan for ScanTcpConnect {
                 let ret = cq_entry.result();
                 if ret == 0 && !self.set.contains(&entry_info.ip) {
                     // 打印成功连接的 IP 地址
-                    println!("{}", &entry_info.ip);
+                    log::info!("{} \t delay: {}ms", &entry_info.ip, &entry_info.start.elapsed().as_millis());
                     self.set.insert(entry_info.ip.clone());
                 }
                 false
@@ -137,6 +137,7 @@ impl Scan for ScanTcpConnect {
                 step: EntryStep::Connect as u8, // 元素枚举类型转换为 u8 类型。
                 buf: None,                      // 不需要缓冲区的支持。
                 fd: sckt,                       // socket 描述符。
+                start: std::time::Instant::now(),
             })
             .unwrap(); // 如果分配失败，直接 panic 终止程序。
 
@@ -153,6 +154,7 @@ impl Scan for ScanTcpConnect {
                 step: EntryStep::ConnectTimeout as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
 
@@ -169,6 +171,7 @@ impl Scan for ScanTcpConnect {
                 step: EntryStep::Close as u8,
                 buf: None,
                 fd: sckt,
+                start: std::time::Instant::now(),
             })
             .unwrap();
 

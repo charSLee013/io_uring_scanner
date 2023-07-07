@@ -18,6 +18,7 @@ pub struct EntryInfo {
     pub step: u8,           // 记录 I/O 操作执行的步骤
     pub buf: Option<BufferInfo>, // 缓冲信息
     pub fd: RawFd,          // 文件描述符
+    pub start: std::time::Instant, // 操作开始时间
 }
 
 pub type BufferIdx = usize;
@@ -83,9 +84,12 @@ impl RingAllocator {
             .collect();
 
         // 使用 Submitter 来注册所有的缓冲区
-        submitter
-            .register_buffers(&iovs)
-            .expect("Failed to register buffers");
+        log::info!("register buffers size: {}",iovs.len());
+        unsafe {
+            submitter
+                .register_buffers(&iovs)
+                .unwrap()
+        }
 
         // 初始化分配器的数据结构
         Self {
@@ -109,7 +113,6 @@ impl RingAllocator {
     pub fn has_free_entry_count(&self, count: usize) -> bool {
         self.free_entry_idx.len() >= count
     }
-
 
     // 获取已经分配的 entry 数量
     // `entries.capacity()` 返回 Ring Buffer 中 `entry` 的总数量。
@@ -246,6 +249,7 @@ mod tests {
             step: 0,
             buf: None,
             fd: -1,
+            start: std::time::Instant::now(),
         };
         let entry_idx = allocator.alloc_entry(entry_info.clone()).unwrap();
 
@@ -274,6 +278,7 @@ mod tests {
             step: 0,
             buf: None,
             fd: -1,
+            start: std::time::Instant::now(),
         };
 
         allocator.alloc_entry(entry_info.clone()).unwrap();
@@ -293,6 +298,7 @@ mod tests {
             step: 0,
             buf: None,
             fd: -1,
+            start: std::time::Instant::now(),
         };
         let entry_idx = allocator.alloc_entry(entry_info.clone()).unwrap();
 
@@ -312,13 +318,14 @@ mod tests {
             step: 0,
             buf: None,
             fd: -1,
+            start: std::time::Instant::now(),
         };
 
         for i in 0..ring_size {
             // 注意！因为Vec.pop 弹出的是末尾元素
             // 所以索引应该是从ring_size - 1 到 0
             let entry_idx = allocator.alloc_entry(entry_info.clone()).unwrap();
-            assert_eq!(entry_idx as usize, ring_size - i -1);
+            assert_eq!(entry_idx as usize, ring_size - i - 1);
         }
 
         // 所有条目都已分配

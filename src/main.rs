@@ -1,6 +1,6 @@
 #![feature(byte_slice_trim_ascii)]
 
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::fmt::Write;
 use std::io;
 use std::net::SocketAddrV4;
@@ -31,7 +31,11 @@ fn main() -> io::Result<()> {
     simple_logger::init_with_env().unwrap();
 
     // 解析命令行参数
-    let cl_opts: config::CommandLineOptions = config::CommandLineOptions::from_args();
+    let mut cl_opts: config::CommandLineOptions = config::CommandLineOptions::from_args();
+    if cl_opts.ring_size < 2 {
+        cl_opts.ring_size = 2;
+    }
+
     log::trace!("{:?}", cl_opts);
 
     // 增加打开文件数限制
@@ -40,7 +44,7 @@ fn main() -> io::Result<()> {
     log::info!("Bumped RLIMIT_NOFILE from {soft_limit} to {hard_limit}");
 
     // 创建一个 ring buffer
-    let mut iorings = IoUring::new(cl_opts.ring_size as u32)?;
+    let mut iorings = IoUring::new(16384)?;
 
     // 根据命令行参数选择对应的扫描类型
     let mut scan: Box<dyn Scan> = match &cl_opts.scan_opts {
@@ -59,7 +63,7 @@ fn main() -> io::Result<()> {
     // 初始化 RingAllocator 以跟踪 ring buffer 的状态
     let mut ring_allocator = ring::RingAllocator::new(
         // cl_opts.ring_size,
-        cl_opts.ring_size * scan.ops_per_ip(),
+        min(cl_opts.ring_size.next_power_of_two(),16384/scan.ops_per_ip()) * scan.ops_per_ip() ,
         cl_opts.max_read_size,
         scan.max_tx_size(),
         &iorings.submitter(),
@@ -71,7 +75,7 @@ fn main() -> io::Result<()> {
     let total_ip_count: usize = ip_ranges.iter().map(|r| r.hosts().count()).sum();
     let mut ip_iter = ip_ranges.iter().flat_map(|r| r.hosts());
 
-    let progress = ProgressBar::new(total_ip_count as u64);
+    let progress = ProgressBar::new(total_ip_count as u64 * cl_opts.time as u64);
     progress.set_style(
         ProgressStyle::default_bar()
             .template(
@@ -111,67 +115,88 @@ fn main() -> io::Result<()> {
         write: Timespec::new().sec(cl_opts.timeout_write_secs),
     };
 
-    let mut done = false;
-    // 进入 while 循环，只要 done 标志为 false，则继续循环。
-    while !done {
-        // 内部 while 循环中调用 `can_push` 函数，
-        // 该函数用于检查 Ring Buffer 是否可以推入下一个操作，而不会阻塞。如果可以，则执行以下操作。
-        while can_push(&iorings.submission(), &*scan, &ring_allocator) {
-            // 调用 `ip_iter.next()` 从 IP 地址列表中获取下一个地址，
-            if let Some(ip_addr) = ip_iter.next() {
-                // 使用 SockaddrIn 结构体表示该 IP 地址和端口，
-                let addr: SockaddrIn = SockaddrIn::from(SocketAddrV4::new(ip_addr, cl_opts.port));
-                // 调用 `scan.socket()` 获取一个 socket 对象。
-                let sckt = scan.socket();
-                // 记录 socket id，用于调试。
-                log::trace!("New socket: {}", sckt);
+    // 循环次数
+    for _ in 0..max(cl_opts.time, 1) {
+        let ip_ranges: Vec<std::net::Ipv4Addr> = ip_ranges
+            .clone()
+            .into_iter()
+            .flat_map(|r| r.hosts())
+            .collect();
+        let mut ip_iter_inter = ip_ranges.into_iter();
 
-                // 执行 `scan.push_scan_ops` 方法，将 socket 和 SockaddrIn 对象推入 Ring Buffer 中，
-                // 并设置超时选项，该方法在添加操作时可能会阻塞。
-                scan.push_scan_ops(
-                    sckt.as_raw_fd(),
-                    &addr,
-                    &mut iorings.submission(),
-                    &mut ring_allocator,
-                    &timeouts,
-                )
-                .expect("Failed to push ring ops");
-                // 如果没有已经分配的空间，即整个Ring Buffer 都是空的
-                // 则将 `done` 标志设置为 true，然后跳出内部 while 循环。
-            } else if ring_allocator.allocated_entry_count() == 0 {
-                done = true;
-                break;
-            } else {
-                break;
+        let mut done = false;
+        // 进入 while 循环，只要 done 标志为 false，则继续循环。
+        while !done {
+            // 内部 while 循环中调用 `can_push` 函数，
+            // 该函数用于检查 Ring Buffer 是否可以推入下一个操作，而不会阻塞。如果可以，则执行以下操作。
+            while can_push(&iorings.submission(), &*scan, &ring_allocator) {
+                // 调用 `ip_iter.next()` 从 IP 地址列表中获取下一个地址，
+                if let Some(ip_addr) = ip_iter_inter.next() {
+                    // 使用 SockaddrIn 结构体表示该 IP 地址和端口，
+                    let addr: SockaddrIn =
+                        SockaddrIn::from(SocketAddrV4::new(ip_addr, cl_opts.port));
+                    // 调用 `scan.socket()` 获取一个 socket 对象。
+                    let sckt = scan.socket();
+                    // 记录 socket id，用于调试。
+                    log::trace!("New socket: {}", sckt);
+
+                    // 执行 `scan.push_scan_ops` 方法，将 socket 和 SockaddrIn 对象推入 Ring Buffer 中，
+                    // 并设置超时选项，该方法在添加操作时可能会阻塞。
+                    scan.push_scan_ops(
+                        sckt.as_raw_fd(),
+                        &addr,
+                        &mut iorings.submission(),
+                        &mut ring_allocator,
+                        &timeouts,
+                    )
+                    .expect("Failed to push ring ops");
+                    // 如果没有已经分配的空间，即整个Ring Buffer 都是空的
+                    // 则将 `done` 标志设置为 true，然后跳出内部 while 循环。
+
+                    // 比较激进的提交任务到内核
+                    iorings.submit().unwrap();
+                } else if ring_allocator.allocated_entry_count() == 0 {
+                    done = true;
+                    break;
+                } else {
+                    break;
+                }
             }
-        }
 
-        // 记录已经完成的操作数。
-        let completed_count = iorings.completion().len();
-        log::trace!("Completed count before wait: {completed_count}");
+            // 记录已经完成的操作数。
+            let completed_count = iorings.completion().len();
+            // log::debug!("Completed count before wait: {completed_count}");
 
-        // 调用 `iorings.submit_and_wait` 将 Ring Buffer 中未完成的事件提交到内核，
-        // 并阻塞等待至少一个完成事件。
-        iorings.submit_and_wait(min(
-            cl_opts.ring_batch_size,
-            ring_allocator.allocated_entry_count() - completed_count,
-        ))?;
+            // // 调用 `iorings.submit_and_wait` 将 Ring Buffer 中未完成的事件提交到内核，
+            // // 并阻塞等待至少一个完成事件。
+            // iorings.submit_and_wait(min(
+            //     cl_opts.ring_batch_size,
+            //     ring_allocator.allocated_entry_count() - completed_count,
+            // ))?;
 
-        // 输出当前完成任务数量。
-        log::trace!("Completed count after wait: {}", iorings.completion().len());
+            // 阻塞等待至少一个完成事件或者没有事件可以退出了
+            iorings.submit_and_wait(min(
+                1,
+                ring_allocator.allocated_entry_count() - completed_count,
+            ))?;
 
-        // 遍历完成的事件，调用 `scan.process_completed_entry` 处理完成的事件并更新进度条。
-        for ce in iorings.completion() {
-            // 调用 `ring_allocator.get_entry` 函数获取相关的扫描项，
-            let entry: &ring::EntryInfo = ring_allocator.get_entry(ce.user_data()).unwrap();
-            // 调用 `scan.process_completed_entry` 处理完成的事件并更新进度条。
-            if scan.process_completed_entry(&ce, entry, &ring_allocator) {
-                progress.inc(1);
+            // 输出当前完成任务数量。
+            log::debug!("Completed count after wait: {}", iorings.completion().len());
+
+            // 遍历完成的事件，调用 `scan.process_completed_entry` 处理完成的事件并更新进度条。
+            for ce in iorings.completion() {
+                // 调用 `ring_allocator.get_entry` 函数获取相关的扫描项，
+                let entry: &ring::EntryInfo = ring_allocator.get_entry(ce.user_data()).unwrap();
+                // 调用 `scan.process_completed_entry` 处理完成的事件并更新进度条。
+                if scan.process_completed_entry(&ce, entry, &ring_allocator) {
+                    progress.inc(1);
+                }
+                // 调用 `ring_allocator.free_entry` 释放扫描项。
+                ring_allocator.free_entry(ce.user_data());
             }
-            // 调用 `ring_allocator.free_entry` 释放扫描项。
-            ring_allocator.free_entry(ce.user_data());
         }
     }
+
     progress.finish();
 
     Ok(())
